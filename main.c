@@ -10,12 +10,49 @@
 #define global_variable static
 
 global_variable int running;
+global_variable BITMAPINFO BitMapInfo;
+global_variable	void *BitMapMemory;
+global_variable HBITMAP BitMapHandle;
+global_variable HDC BitMapDeviceContext;
 
-internal void ResizeDIBDSection(int width, int height){
+internal void Win32ResizeDIBDSection(int width, int height) {
+
+	if(BitMapHandle){
+		DeleteObject(BitMapHandle);
+	} 
+	if(!BitMapDeviceContext){
+		BitMapDeviceContext = CreateCompatibleDC(0);
+	}
+
+	// create (or edit cuz declared already) the rectangle we will draw in
 	
+	
+	
+	BitMapInfo.bmiHeader.biSize = sizeof(BitMapInfo.bmiHeader);
+	BitMapInfo.bmiHeader.biWidth = width;
+	BitMapInfo.bmiHeader.biHeight = height;
+	BitMapInfo.bmiHeader.biPlanes = 1;
+	BitMapInfo.bmiHeader.biBitCount = 32;
+	BitMapInfo.bmiHeader.biCompression = BI_RGB;
+	
+	BitMapHandle = CreateDIBSection(
+	BitMapDeviceContext,
+	&BitMapInfo,
+	DIB_RGB_COLORS,
+	&BitMapMemory,
+	0,
+	0
+);
 }
 
-LRESULT CALLBACK MainWindowCallback(
+internal void Win32UpdateWindow(HDC DeviceContext, int x, int y, int width, int height) {
+	StretchDIBits(DeviceContext, x, y, width, height, x, y, width, height, 
+	BitMapMemory,
+	&BitMapInfo,
+  DIB_RGB_COLORS, SRCCOPY);
+}
+
+LRESULT CALLBACK Win32MainWindowCallback(
 	HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 ) {
 	LRESULT Result = 0;
@@ -25,11 +62,13 @@ LRESULT CALLBACK MainWindowCallback(
 	case WM_SIZE: {
 		// resize window
 		RECT ClientRect;
-		int width = ClientRect.rcPaint.right - ClientRect.rcPaint.left;
-		int height = ClientRect.rcPaint.bottom - ClientRect.rcPaint.top;
+	
+		GetClientRect(hWnd, &ClientRect);
 		
-		int GetClientRect(hWnd, &ClientRect);
-		ResizeDIBDSection();
+		int width = ClientRect.right - ClientRect.left;
+		int height = ClientRect.bottom - ClientRect.top;
+		
+		Win32ResizeDIBDSection(width, height);
 		OutputDebugStringA("WM_SIZE\n");
 		break;
 	};
@@ -57,12 +96,7 @@ LRESULT CALLBACK MainWindowCallback(
 		int width = Paint.rcPaint.right - Paint.rcPaint.left;
 		int height = Paint.rcPaint.bottom - Paint.rcPaint.top;
 		
-		//white window
-		local_persist DWORD ROP = WHITENESS;
-		
-		PatBlt(DC, X, Y, width, height, ROP);
-		
-		EndPaint(hWnd, &Paint);
+		Win32UpdateWindow(DC, X, Y, width, height);
 		break;
 	};
 
@@ -88,7 +122,7 @@ int CALLBACK WinMain(
 
 	WindowClass.cbSize = sizeof(WNDCLASSEXA);
 	WindowClass.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
-	WindowClass.lpfnWndProc = MainWindowCallback;
+	WindowClass.lpfnWndProc = Win32MainWindowCallback;
 	WindowClass.hInstance = hInstance;
 	WindowClass.lpszClassName = "TouhouWindowClass";
 
