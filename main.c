@@ -2,6 +2,7 @@
 #include <WinUser.h>
 #include <wingdi.h>
 #include <stdint.h>
+#include <synchapi.h>
 
 #define UNICODE
 #define _UNICODE
@@ -20,28 +21,47 @@ typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
 
+// bitmap stuff
+typedef struct win32_offscreen_buffer {
+	BITMAPINFO info;
+	void *memory;
+	int width;
+	int height;
+	int bytesPerPixel;
+} win32_offscreen_buffer;
+
+typedef struct win32_rect {
+	RECT rectangle;
+	int top;
+	int bottom;
+	int left;
+	int right;
+	int width;
+	int height;
+} win32_rect;
+
 // states
 global_variable int running;
+global_variable win32_offscreen_buffer GlobalBackBuffer;
 
-// bitmap stuff
-global_variable BITMAPINFO BitMapInfo;
-global_variable	void *BitMapMemory;
-global_variable int BitMapWidth;
-global_variable int BitMapHeight;
-global_variable	int bytesPerPixel = 4;
+// rectangle
 
-internal void RenderGradient(int xOffset, int yOffset){
-	int width = BitMapWidth;
-	int height = BitMapHeight;
+internal void Win32GetDrawableRect(HDC DeviceContext) {
 	
-	int offset = width*bytesPerPixel;
-	uint8 *row = (uint8 *)BitMapMemory;
+}
+
+internal void RenderGradient(win32_offscreen_buffer *buffer, int xOffset, int yOffset){
+	int width = buffer->width;
+	int height = buffer->height;
+	
+	int offset = width*buffer->bytesPerPixel;
+	uint8 *row = (uint8 *)buffer->memory;
 	
 	// coloring each pixel of the rectangle
-	for(int y = 0; y < BitMapHeight; ++y){
+	for(int y = 0; y < buffer->height; ++y){
 		
 			uint8 *pixel = (uint8*)row;
-			for(int x = 0; x < BitMapWidth; ++x){
+			for(int x = 0; x < buffer->width; ++x){
 				// /!\ LITTLE ENDIAN ARCH.! MEMORY INDEXES ARE INVERTED!
 				
 				// blue
@@ -65,41 +85,51 @@ internal void RenderGradient(int xOffset, int yOffset){
 	};
 }
 
-internal void Win32ResizeDIBDSection(int width, int height) {
+internal void 
+
+internal void Win32ResizeDIBDSection(win32_offscreen_buffer *buffer, int width, int height) {
 	
 	// free memory if already exists
-	if(BitMapMemory){
-		VirtualFree(BitMapMemory, 0, MEM_RELEASE);
+	if(buffer->memory){
+		VirtualFree(buffer->memory, 0, MEM_RELEASE);
 	}
 	
 	// set bitmap sizes to drawable area size
-	BitMapWidth = width;
-	BitMapHeight = height;
+	buffer->width = width;
+	buffer->height = height;
 	
 	// create (or edit cuz declared already) the rectangle we will draw in
-	BitMapInfo.bmiHeader.biSize = sizeof(BitMapInfo.bmiHeader);
-	BitMapInfo.bmiHeader.biWidth = BitMapWidth;
-	BitMapInfo.bmiHeader.biHeight = -BitMapHeight;
-	BitMapInfo.bmiHeader.biPlanes = 1;
-	BitMapInfo.bmiHeader.biBitCount = 32;
-	BitMapInfo.bmiHeader.biCompression = BI_RGB;
+	buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
+	buffer->info.bmiHeader.biWidth = buffer->width;
+	buffer->info.bmiHeader.biHeight = buffer->height;
+	buffer->info.bmiHeader.biPlanes = 1;
+	buffer->info.bmiHeader.biBitCount = 32;
+	buffer->info.bmiHeader.biCompression = BI_RGB;
 	
-	int bitMapMemorySize = (BitMapWidth * BitMapHeight) * bytesPerPixel;
-	BitMapMemory = VirtualAlloc(0, bitMapMemorySize, MEM_COMMIT, PAGE_READWRITE);
+	int bitMapMemorySize = (buffer->width * buffer->height) * buffer->bytesPerPixel;
+	buffer->memory = VirtualAlloc(0, bitMapMemorySize, MEM_COMMIT, PAGE_READWRITE);
 };
 
-internal void Win32UpdateWindow(HDC DeviceContext, RECT *WindowRect, int x, int y, int width, int height) {
+internal void Win32UpdateWindow(HDC DeviceContext, 
+								RECT *WindowRect, 
+								win32_offscreen_buffer *buffer, 
+								int x, int y, 
+								int width, 
+								int height) 
+{
+									
 	int windowWidth = WindowRect->right - WindowRect->left;
 	int windowHeight = WindowRect->bottom - WindowRect->top;
-	
+
 	StretchDIBits(DeviceContext, 
-	0, 0, BitMapWidth, BitMapHeight, 
+	0, 0, buffer->width, buffer->height, 
 	0, 0, windowWidth, windowHeight, 
-	BitMapMemory,
-	&BitMapInfo,
+	buffer->memory,
+	&buffer->info,
   DIB_RGB_COLORS, SRCCOPY);
 }
 
+// messages from windows, interactions with the window by OS and User
 LRESULT CALLBACK Win32MainWindowCallback(
 	HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 ) {
@@ -115,7 +145,7 @@ LRESULT CALLBACK Win32MainWindowCallback(
 		int width = ClientRect.right - ClientRect.left;
 		int height = ClientRect.bottom - ClientRect.top;
 		
-		Win32ResizeDIBDSection(width, height);
+		Win32ResizeDIBDSection(&GlobalBackBuffer, width, height);
 		OutputDebugStringA("WM_SIZE\n");
 		break;
 	};
@@ -130,6 +160,7 @@ LRESULT CALLBACK Win32MainWindowCallback(
 		break;
 	};
 	case WM_ACTIVATEAPP: {
+		GlobalBackBuffer.bytesPerPixel = 4;
 		OutputDebugStringA("WM_ACTIVATEAPP\n");
 		break;
 	};
@@ -145,7 +176,7 @@ LRESULT CALLBACK Win32MainWindowCallback(
 		
 		RECT ClientRect;
 		GetClientRect(hWnd, &ClientRect);
-		Win32UpdateWindow(DC, &ClientRect, X, Y, width, height);
+		Win32UpdateWindow(DC, &ClientRect, &GlobalBackBuffer, X, Y, width, height);
 		break;
 	};
 
@@ -196,6 +227,16 @@ int CALLBACK WinMain(
 			
 			int xOffset = 0;
 			int yOffset = 0;
+			
+				GlobalBackBuffer.bytesPerPixel = 4;
+			
+				RECT ClientRect;
+				GetClientRect(WindowHandle, &ClientRect);
+				int windowWidth = ClientRect.right - ClientRect.left;
+				int windowHeight = ClientRect.bottom - ClientRect.top;
+		
+				Win32ResizeDIBDSection(&GlobalBackBuffer, windowWidth, windowHeight);
+			
 			while (running) {
 				
 				while(PeekMessageA(&Msg, 0, 0, 0, PM_REMOVE)) {
@@ -214,11 +255,15 @@ int CALLBACK WinMain(
 				int windowWidth = ClientRect.right - ClientRect.left;
 				int windowHeight = ClientRect.bottom - ClientRect.top;
 				
-				RenderGradient(xOffset, yOffset);
-				Win32UpdateWindow(DC, &ClientRect, 0, 0, windowWidth, windowHeight);
+				RenderGradient(&GlobalBackBuffer, xOffset, yOffset);
+				Win32UpdateWindow(DC, &ClientRect, &GlobalBackBuffer, 0, 0, windowWidth, windowHeight);
 				ReleaseDC(WindowHandle, DC);
 				
 				++xOffset;
+				
+				// NOTE(wuwi) : limit FPS and game ticks
+				// (144 for now, might want to increase to 165 or 240, depends of performance.)
+				Sleep(7);
 			}
 		}
 
