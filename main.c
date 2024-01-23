@@ -85,7 +85,6 @@ internal void RenderGradient(win32_offscreen_buffer *buffer, int xOffset, int yO
 	};
 }
 
-internal void 
 
 internal void Win32ResizeDIBDSection(win32_offscreen_buffer *buffer, int width, int height) {
 	
@@ -260,6 +259,9 @@ int CALLBACK WinMain(
 				ReleaseDC(WindowHandle, DC);
 				
 				++xOffset;
+				
+				POINT mousePos;
+				GetCursorPos(&mousePos);
 				
 				// NOTE(wuwi) : limit FPS and game ticks
 				// (144 for now, might want to increase to 165 or 240, depends of performance.)
