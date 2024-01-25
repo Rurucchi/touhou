@@ -21,6 +21,10 @@ typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
 
+
+
+// ------- CUSTOM STRUCTS AND TYPEDEFS
+
 // bitmap stuff
 typedef struct win32_offscreen_buffer {
 	BITMAPINFO info;
@@ -30,27 +34,22 @@ typedef struct win32_offscreen_buffer {
 	int bytesPerPixel;
 } win32_offscreen_buffer;
 
+// rectangle
 typedef struct win32_rect {
 	RECT rectangle;
-	int top;
-	int bottom;
-	int left;
-	int right;
 	int width;
 	int height;
 } win32_rect;
 
-// states
+
+
+//	-------	GLOBAL VARIABLES
 global_variable int running;
 global_variable win32_offscreen_buffer GlobalBackBuffer;
 
-// rectangle
 
-internal void Win32GetDrawableRect(HWND windowHandler) {
-	win32_rect drawableRect;
-		GetClientRect(windowHandler, &drawableRect.rectangle);
-	
-}
+
+//	-------	RENDERING
 
 internal void RenderGradient(win32_offscreen_buffer *buffer, int xOffset, int yOffset){
 	int width = buffer->width;
@@ -88,6 +87,18 @@ internal void RenderGradient(win32_offscreen_buffer *buffer, int xOffset, int yO
 }
 
 
+
+//	------- WIN32 STUFF
+
+internal win32_rect Win32GetDrawableRect(HWND windowHandler) {
+	win32_rect drawableRect;
+	GetClientRect(windowHandler, &drawableRect.rectangle);
+	drawableRect.width 	= drawableRect.rectangle.right - drawableRect.rectangle.left;
+	drawableRect.height	= drawableRect.rectangle.bottom - drawableRect.rectangle.top;
+	
+	return drawableRect;
+}
+
 internal void Win32ResizeDIBDSection(win32_offscreen_buffer *buffer, int width, int height) {
 	
 	// free memory if already exists
@@ -114,7 +125,6 @@ internal void Win32ResizeDIBDSection(win32_offscreen_buffer *buffer, int width, 
 internal void Win32UpdateWindow(HDC DeviceContext, 
 								RECT *WindowRect, 
 								win32_offscreen_buffer *buffer, 
-								int x, int y, 
 								int width, 
 								int height) 
 {
@@ -130,7 +140,8 @@ internal void Win32UpdateWindow(HDC DeviceContext,
   DIB_RGB_COLORS, SRCCOPY);
 }
 
-// messages from windows, interactions with the window by OS and User
+
+// ---	MESSAGES PROCESSING
 LRESULT CALLBACK Win32MainWindowCallback(
 	HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 ) {
@@ -138,35 +149,39 @@ LRESULT CALLBACK Win32MainWindowCallback(
 
 
 	switch (uMsg) {
-	case WM_SIZE: {
-		// resize window
-		RECT ClientRect;
-		GetClientRect(hWnd, &ClientRect);
 		
-		int width = ClientRect.right - ClientRect.left;
-		int height = ClientRect.bottom - ClientRect.top;
+		//	WINDOW RESIZE 
+		case WM_SIZE: {
+					
+			win32_rect clientRect = Win32GetDrawableRect(hWnd);
+			Win32ResizeDIBDSection(&GlobalBackBuffer, clientRect.width, clientRect.height);
+			break;
+		};
 		
-		Win32ResizeDIBDSection(&GlobalBackBuffer, width, height);
-		OutputDebugStringA("WM_SIZE\n");
-		break;
-	};
-	case WM_DESTROY: {
-		running = 0;
-		OutputDebugStringA("WM_DESTROY\n");
-		break;
-	};
-	case WM_CLOSE: {
-		running = 0;
-		OutputDebugStringA("WM_CLOSE\n");
-		break;
-	};
-	case WM_ACTIVATEAPP: {
-		GlobalBackBuffer.bytesPerPixel = 4;
-		OutputDebugStringA("WM_ACTIVATEAPP\n");
-		break;
-	};
-	
-	case WM_PAINT : {
+		//	WINDOW IS DESTROYED (process killed)
+		case WM_DESTROY: {
+			running = 0;
+			OutputDebugStringA("DESTROY\n");
+			break;
+		};
+		
+		//	WINDOW IS CLOSED BY THE USER
+		case WM_CLOSE: {
+			running = 0;
+			OutputDebugStringA("CLOSE\n");
+			break;
+		};
+		
+		//	WINDOW IS CREATED
+		case WM_ACTIVATEAPP: {
+			GlobalBackBuffer.bytesPerPixel = 4;
+			OutputDebugStringA("WM_ACTIVATEAPP\n");
+			break;
+		};
+		
+		//	ON RESIZE : RENDER AGAIN
+		case WM_PAINT : {
+			
 		PAINTSTRUCT Paint;
 		HDC DC = BeginPaint(hWnd, &Paint);
 		
@@ -179,18 +194,47 @@ LRESULT CALLBACK Win32MainWindowCallback(
 		GetClientRect(hWnd, &ClientRect);
 		Win32UpdateWindow(DC, &ClientRect, &GlobalBackBuffer, X, Y, width, height);
 		break;
+		};
+		
+		//	INPUT PROCESSING
+		case WM_INPUT: {
+			OutputDebugStringA("INPUT?\n");
+		};
+		
+		default: {
+			Result = DefWindowProcA(hWnd, uMsg, wParam, lParam);
+			break;
+		};
 	};
-
-	default: {
-		OutputDebugStringA("defaut\n");
-		Result = DefWindowProcA(hWnd, uMsg, wParam, lParam);
-		break;
-	};
-
-	}
 	return (Result);
 };
+	
+	
 
+
+
+
+//	-------	INPUT HANDLING
+
+internal RAWINPUTDEVICE DeviceHandler() {
+	RAWINPUTDEVICE Rid[2];
+        
+	Rid[0].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+	Rid[0].usUsage = 0x02;              // HID_USAGE_GENERIC_MOUSE
+	Rid[0].dwFlags = RIDEV_NOLEGACY;    // adds mouse and also ignores legacy mouse messages
+	Rid[0].hwndTarget = 0;
+
+	Rid[1].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+	Rid[1].usUsage = 0x06;              // HID_USAGE_GENERIC_KEYBOARD
+	Rid[1].dwFlags = RIDEV_NOLEGACY;    // adds keyboard and also ignores legacy keyboard messages
+	Rid[1].hwndTarget = 0;
+	
+	return Rid[2];
+}
+
+
+
+//  ------- ENTRY POINT
 
 int CALLBACK WinMain(
 	HINSTANCE hInstance,
@@ -229,14 +273,13 @@ int CALLBACK WinMain(
 			int xOffset = 0;
 			int yOffset = 0;
 			
-				GlobalBackBuffer.bytesPerPixel = 4;
+			// first run, init window size and backbuffer size
+			GlobalBackBuffer.bytesPerPixel = 4;
+			win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
+			Win32ResizeDIBDSection(&GlobalBackBuffer, clientRect.width, clientRect.height);
 			
-				RECT ClientRect;
-				GetClientRect(WindowHandle, &ClientRect);
-				int windowWidth = ClientRect.right - ClientRect.left;
-				int windowHeight = ClientRect.bottom - ClientRect.top;
-		
-				Win32ResizeDIBDSection(&GlobalBackBuffer, windowWidth, windowHeight);
+			// input system
+			// RAWINPUTDEVICE Rid[2];
 			
 			while (running) {
 				
@@ -251,19 +294,14 @@ int CALLBACK WinMain(
 				}
 				
 				HDC DC = GetDC(WindowHandle);
-				RECT ClientRect;
-				GetClientRect(WindowHandle, &ClientRect);
-				int windowWidth = ClientRect.right - ClientRect.left;
-				int windowHeight = ClientRect.bottom - ClientRect.top;
+				
+				win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
 				
 				RenderGradient(&GlobalBackBuffer, xOffset, yOffset);
-				Win32UpdateWindow(DC, &ClientRect, &GlobalBackBuffer, 0, 0, windowWidth, windowHeight);
+				Win32UpdateWindow(DC, &clientRect.rectangle, &GlobalBackBuffer, clientRect.width, clientRect.height);
 				ReleaseDC(WindowHandle, DC);
 				
 				++xOffset;
-				
-				POINT mousePos;
-				GetCursorPos(&mousePos);
 				
 				// NOTE(wuwi) : limit FPS and game ticks
 				// (144 for now, might want to increase to 165 or 240, depends of performance.)
