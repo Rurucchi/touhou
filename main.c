@@ -46,7 +46,9 @@ global_variable win32_offscreen_buffer GlobalBackBuffer;
 
 // rectangle
 
-internal void Win32GetDrawableRect(HDC DeviceContext) {
+internal void Win32GetDrawableRect(HWND windowHandler) {
+	win32_rect drawableRect;
+		GetClientRect(windowHandler, &drawableRect.rectangle);
 	
 }
 
