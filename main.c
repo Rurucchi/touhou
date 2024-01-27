@@ -192,7 +192,7 @@ LRESULT CALLBACK Win32MainWindowCallback(
 		
 		RECT ClientRect;
 		GetClientRect(hWnd, &ClientRect);
-		Win32UpdateWindow(DC, &ClientRect, &GlobalBackBuffer, X, Y, width, height);
+		Win32UpdateWindow(DC, &ClientRect, &GlobalBackBuffer, width, height);
 		break;
 		};
 		
@@ -211,25 +211,19 @@ LRESULT CALLBACK Win32MainWindowCallback(
 	
 	
 
-
-
-
 //	-------	INPUT HANDLING
 
-internal RAWINPUTDEVICE DeviceHandler() {
-	RAWINPUTDEVICE Rid[2];
+internal void ListenToDevices(RAWINPUTDEVICE RID[2]) {
         
-	Rid[0].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
-	Rid[0].usUsage = 0x02;              // HID_USAGE_GENERIC_MOUSE
-	Rid[0].dwFlags = RIDEV_NOLEGACY;    // adds mouse and also ignores legacy mouse messages
-	Rid[0].hwndTarget = 0;
+	RID[0].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+	RID[0].usUsage = 0x02;              // HID_USAGE_GENERIC_MOUSE
+	RID[0].dwFlags = RIDEV_NOLEGACY;    // adds mouse and also ignores legacy mouse messages
+	RID[0].hwndTarget = 0;
 
-	Rid[1].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
-	Rid[1].usUsage = 0x06;              // HID_USAGE_GENERIC_KEYBOARD
-	Rid[1].dwFlags = RIDEV_NOLEGACY;    // adds keyboard and also ignores legacy keyboard messages
-	Rid[1].hwndTarget = 0;
-	
-	return Rid[2];
+	RID[1].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+	RID[1].usUsage = 0x06;              // HID_USAGE_GENERIC_KEYBOARD
+	RID[1].dwFlags = RIDEV_NOLEGACY;    // adds keyboard and also ignores legacy keyboard messages
+	RID[1].hwndTarget = 0;
 }
 
 
@@ -271,6 +265,7 @@ int CALLBACK WinMain(
 			running = 1;
 			
 			int xOffset = 0;
+			
 			int yOffset = 0;
 			
 			// first run, init window size and backbuffer size
@@ -279,7 +274,16 @@ int CALLBACK WinMain(
 			Win32ResizeDIBDSection(&GlobalBackBuffer, clientRect.width, clientRect.height);
 			
 			// input system
-			// RAWINPUTDEVICE Rid[2];
+			RAWINPUTDEVICE RID[2];
+			ListenToDevices(RID);
+			
+			if (RegisterRawInputDevices(RID, 2, sizeof(RID[0])) == FALSE){
+				OutputDebugStringA("registration failed. Call GetLastError for the cause of the error\n");
+			}
+			
+			
+			// GAME LOOP :
+			
 			
 			while (running) {
 				
