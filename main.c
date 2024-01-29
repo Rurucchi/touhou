@@ -11,6 +11,8 @@
 #define local_persist static
 #define global_variable static
 
+typedef unsigned int uint;
+
 typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
@@ -46,6 +48,7 @@ typedef struct win32_rect {
 //	-------	GLOBAL VARIABLES
 global_variable int running;
 global_variable win32_offscreen_buffer GlobalBackBuffer;
+global_variable POINT MousePos;
 
 
 
@@ -84,6 +87,88 @@ internal void RenderGradient(win32_offscreen_buffer *buffer, int xOffset, int yO
 		
 		row += offset;
 	};
+}
+
+
+
+//	-------	INPUT HANDLING
+
+internal void ListenToDevices(RAWINPUTDEVICE RID[2]) {
+        
+	RID[0].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+	RID[0].usUsage = 0x02;              // HID_USAGE_GENERIC_MOUSE
+	RID[0].dwFlags = RIDEV_NOLEGACY;    // adds mouse and also ignores legacy mouse messages
+	RID[0].hwndTarget = 0;
+
+	RID[1].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+	RID[1].usUsage = 0x06;              // HID_USAGE_GENERIC_KEYBOARD
+	RID[1].dwFlags = RIDEV_NOLEGACY;    // adds keyboard and also ignores legacy keyboard messages
+	RID[1].hwndTarget = 0;
+}
+
+internal void FilterInputs(LPARAM lParam) {
+	HRESULT hResult;
+	uint dwSize;
+
+	GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
+    uint8 lpb[256];
+	
+    if (lpb == NULL) 
+    {
+		OutputDebugStringA("lpb is null\n");
+		return;
+    } 
+
+    if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, lpb, &dwSize, sizeof(RAWINPUTHEADER)) != dwSize)
+         OutputDebugString (TEXT("GetRawInputData does not return correct size !\n")); 
+
+    RAWINPUT* raw = (RAWINPUT*)lpb;
+
+    if (raw->header.dwType == RIM_TYPEKEYBOARD) 
+    {
+		/*
+        hResult = StringCchPrintf(szTempOutput, STRSAFE_MAX_CCH,
+            TEXT(" Kbd: make=%04x Flags:%04x Reserved:%04x ExtraInformation:%08x, msg=%04x VK=%04x \n"), 
+            raw->data.keyboard.MakeCode, 
+            raw->data.keyboard.Flags, 
+            raw->data.keyboard.Reserved, 
+            raw->data.keyboard.ExtraInformation, 
+            raw->data.keyboard.Message, 
+            raw->data.keyboard.VKey);
+        if (FAILED(hResult))
+        {
+        // TODO: write error handler
+        }
+		*/
+        OutputDebugStringA("keyboard\n");
+    }
+	
+	
+	// ↓ NOTE(ru): this code is deprecated for now, using get GetCursorPos, keeping the code in case extra infos would be needed
+	
+	/*
+    else if (raw->header.dwType == RIM_TYPEMOUSE) 
+    {
+		
+        hResult = StringCchPrintf(szTempOutput, STRSAFE_MAX_CCH,
+            TEXT("Mouse: usFlags=%04x ulButtons=%04x usButtonFlags=%04x usButtonData=%04x ulRawButtons=%04x lLastX=%04x lLastY=%04x ulExtraInformation=%04x\r\n"), 
+            raw->data.mouse.usFlags, 
+            raw->data.mouse.ulButtons, 
+            raw->data.mouse.usButtonFlags, 
+            raw->data.mouse.usButtonData, 
+            raw->data.mouse.ulRawButtons, 
+            raw->data.mouse.lLastX, 
+            raw->data.mouse.lLastY, 
+            raw->data.mouse.ulExtraInformation);
+
+        if (FAILED(hResult))
+        {
+        // TODO: write error handler
+        }
+		
+        OutputDebugStringA("mouse\n");
+    } 	
+	*/
 }
 
 
@@ -198,8 +283,16 @@ LRESULT CALLBACK Win32MainWindowCallback(
 		
 		//	INPUT PROCESSING
 		case WM_INPUT: {
-			OutputDebugStringA("INPUT?\n");
+			// FilterInputs(lParam);
+			break;
 		};
+		
+		// TODO(ru): very later on, pause the game when cursor is out of window
+		// (mouse should be kept inside window anyway but alt tab and windows key will not be enforced.)
+		case WM_MOUSELEAVE:
+		{
+			// TODO(ru): use this -> https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-trackmouseevent
+		}
 		
 		default: {
 			Result = DefWindowProcA(hWnd, uMsg, wParam, lParam);
@@ -208,23 +301,6 @@ LRESULT CALLBACK Win32MainWindowCallback(
 	};
 	return (Result);
 };
-	
-	
-
-//	-------	INPUT HANDLING
-
-internal void ListenToDevices(RAWINPUTDEVICE RID[2]) {
-        
-	RID[0].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
-	RID[0].usUsage = 0x02;              // HID_USAGE_GENERIC_MOUSE
-	RID[0].dwFlags = RIDEV_NOLEGACY;    // adds mouse and also ignores legacy mouse messages
-	RID[0].hwndTarget = 0;
-
-	RID[1].usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
-	RID[1].usUsage = 0x06;              // HID_USAGE_GENERIC_KEYBOARD
-	RID[1].dwFlags = RIDEV_NOLEGACY;    // adds keyboard and also ignores legacy keyboard messages
-	RID[1].hwndTarget = 0;
-}
 
 
 
@@ -261,55 +337,83 @@ int CALLBACK WinMain(
 			0
 		);
 		if (WindowHandle) {
-			MSG Msg;
+			// Game loop status
 			running = 1;
 			
-			int xOffset = 0;
+			// Messages
+			MSG Msg;
 			
+			// Rendering offsets
+			int xOffset = 0;
 			int yOffset = 0;
 			
-			// first run, init window size and backbuffer size
-			GlobalBackBuffer.bytesPerPixel = 4;
-			win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
-			Win32ResizeDIBDSection(&GlobalBackBuffer, clientRect.width, clientRect.height);
 			
-			// input system
-			RAWINPUTDEVICE RID[2];
-			ListenToDevices(RID);
+			// init window size and backbuffer size
 			
-			if (RegisterRawInputDevices(RID, 2, sizeof(RID[0])) == FALSE){
-				OutputDebugStringA("registration failed. Call GetLastError for the cause of the error\n");
+			// FIRST RUN (RENDERING)
+			{
+				GlobalBackBuffer.bytesPerPixel = 4;
+				win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
+				Win32ResizeDIBDSection(&GlobalBackBuffer, clientRect.width, clientRect.height);
+			}
+
+			
+			// FIRST RUN (REGISTER DEVICES
+			{
+				RAWINPUTDEVICE RID[2];
+				// ListenToDevices(RID);
+				
+				// if (RegisterRawInputDevices(RID, 2, sizeof(RID[0])) == FALSE){
+				// 	OutputDebugStringA("registration failed. Call GetLastError for the cause of the error\n");
+				// }
 			}
 			
 			
+			
 			// GAME LOOP :
-			
-			
 			while (running) {
 				
-				while(PeekMessageA(&Msg, 0, 0, 0, PM_REMOVE)) {
-					
-					if(Msg.message == WM_QUIT){
-						running = 0;
+				// MESSAGE PROCESSING
+				{
+					while(PeekMessageA(&Msg, 0, 0, 0, PM_REMOVE)) {
+						
+						if(Msg.message == WM_QUIT){
+							running = 0;
+						}
+						
+						if(Msg.message == WM_INPUT) {
+							// FilterInputs(Msg.lParam);
+						}
+						
+						TranslateMessage(&Msg);
+						DispatchMessage(&Msg);
 					}
-					
-					TranslateMessage(&Msg);
-					DispatchMessage(&Msg);
 				}
 				
-				HDC DC = GetDC(WindowHandle);
+				// INPUTS
+				{
+					GetCursorPos(&MousePos);
+				}
 				
-				win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
-				
-				RenderGradient(&GlobalBackBuffer, xOffset, yOffset);
-				Win32UpdateWindow(DC, &clientRect.rectangle, &GlobalBackBuffer, clientRect.width, clientRect.height);
-				ReleaseDC(WindowHandle, DC);
-				
-				++xOffset;
-				
-				// NOTE(wuwi) : limit FPS and game ticks
-				// (144 for now, might want to increase to 165 or 240, depends of performance.)
-				Sleep(7);
+				// RENDERING 
+				{
+					HDC DC = GetDC(WindowHandle);
+					
+					win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
+					
+					RenderGradient(&GlobalBackBuffer, xOffset, yOffset);
+					Win32UpdateWindow(DC, &clientRect.rectangle, &GlobalBackBuffer, clientRect.width, clientRect.height);
+					ReleaseDC(WindowHandle, DC);
+					
+					++xOffset;
+				}
+
+				// GAME SETTINGS AND LIMITATIONS
+				{
+					// NOTE(wuwi) : limit FPS and game ticks
+					// (144 for now, might want to increase to 165 or 240, depends of performance.)
+					Sleep(7);
+				}
 			}
 		}
 
