@@ -287,12 +287,21 @@ LRESULT CALLBACK Win32MainWindowCallback(
 			break;
 		};
 		
+		/*
+		
 		// TODO(ru): very later on, pause the game when cursor is out of window
 		// (mouse should be kept inside window anyway but alt tab and windows key will not be enforced.)
 		case WM_MOUSELEAVE:
 		{
 			// TODO(ru): use this -> https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-trackmouseevent
+			// this too -> https://stackoverflow.com/questions/68021291/how-to-detect-mouse-cursor-is-outside-a-windows
+			// NOTE(ru): ^ this may or may not be useful? It's possible to know if the mouse is inside the app just by 
+			// doing some calculation with both the rect and mouses absolute coordinates to make relative ones
+			// ^ (might possibly be faster than calling an event and stuff)
+			
 		}
+		
+		*/
 		
 		default: {
 			Result = DefWindowProcA(hWnd, uMsg, wParam, lParam);
@@ -329,8 +338,8 @@ int CALLBACK WinMain(
 			WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 			CW_USEDEFAULT,
 			CW_USEDEFAULT,
-			CW_USEDEFAULT,
-			CW_USEDEFAULT,
+			1600,
+			900,
 			0,
 			0,
 			hInstance,
@@ -347,8 +356,6 @@ int CALLBACK WinMain(
 			int xOffset = 0;
 			int yOffset = 0;
 			
-			
-			// init window size and backbuffer size
 			
 			// FIRST RUN (RENDERING)
 			{
@@ -373,6 +380,10 @@ int CALLBACK WinMain(
 			// GAME LOOP :
 			while (running) {
 				
+				// leaving that here for now, it's basically used everywhere anyways
+				HDC DC = GetDC(WindowHandle);
+				win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
+				
 				// MESSAGE PROCESSING
 				{
 					while(PeekMessageA(&Msg, 0, 0, 0, PM_REMOVE)) {
@@ -390,22 +401,26 @@ int CALLBACK WinMain(
 					}
 				}
 				
-				// INPUTS
-				{
-					GetCursorPos(&MousePos);
-				}
+
 				
 				// RENDERING 
 				{
-					HDC DC = GetDC(WindowHandle);
-					
-					win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
-					
 					RenderGradient(&GlobalBackBuffer, xOffset, yOffset);
 					Win32UpdateWindow(DC, &clientRect.rectangle, &GlobalBackBuffer, clientRect.width, clientRect.height);
 					ReleaseDC(WindowHandle, DC);
 					
 					++xOffset;
+				}
+				
+				// INPUTS
+				{
+					GetCursorPos(&MousePos);
+					// TODO(ru): fix this
+					if((MousePos.x > clientRect.rectangle.left && MousePos.x < clientRect.rectangle.right) && (MousePos.y < clientRect.rectangle.top && MousePos.y > clientRect.rectangle.bottom)){
+						OutputDebugStringA("inside window\n");
+					} else {
+						OutputDebugStringA("not inside window\n");
+					}
 				}
 
 				// GAME SETTINGS AND LIMITATIONS
