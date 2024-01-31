@@ -3,6 +3,7 @@
 #include <wingdi.h>
 #include <stdint.h>
 #include <synchapi.h>
+#include <stdio.h>
 
 #define UNICODE
 #define _UNICODE
@@ -338,8 +339,8 @@ int CALLBACK WinMain(
 			WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 			CW_USEDEFAULT,
 			CW_USEDEFAULT,
-			1600,
-			900,
+			600,
+			450,
 			0,
 			0,
 			hInstance,
@@ -401,7 +402,21 @@ int CALLBACK WinMain(
 					}
 				}
 				
-
+				
+				// INPUTS
+				{
+					GetCursorPos(&MousePos);
+					// TODO(ru): fix this
+					ScreenToClient(WindowHandle, &MousePos);
+					char buffer[256];
+					_snprintf_s(buffer, sizeof(buffer), sizeof(buffer), "Pos: %d,%d\n", MousePos.x, MousePos.y);
+					OutputDebugStringA(buffer);
+					if((MousePos.x > 0 && MousePos.y > 0) && (MousePos.x < clientRect.width && MousePos.y < clientRect.height) ) {
+						OutputDebugStringA("inside");
+					} else {
+						OutputDebugStringA("outside");
+					}
+				}
 				
 				// RENDERING 
 				{
@@ -410,17 +425,6 @@ int CALLBACK WinMain(
 					ReleaseDC(WindowHandle, DC);
 					
 					++xOffset;
-				}
-				
-				// INPUTS
-				{
-					GetCursorPos(&MousePos);
-					// TODO(ru): fix this
-					if((MousePos.x > clientRect.rectangle.left && MousePos.x < clientRect.rectangle.right) && (MousePos.y < clientRect.rectangle.top && MousePos.y > clientRect.rectangle.bottom)){
-						OutputDebugStringA("inside window\n");
-					} else {
-						OutputDebugStringA("not inside window\n");
-					}
 				}
 
 				// GAME SETTINGS AND LIMITATIONS
