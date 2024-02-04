@@ -28,6 +28,12 @@ typedef int64_t int64;
 
 // ------- CUSTOM STRUCTS AND TYPEDEFS
 
+typedef struct game_state {
+	int pause;	// if the game is paused (menu has the game paused by default?) 0 or 1.
+	int level;	// level of the game, 0 is the main menu
+	int difficulty; // difficulty : easy(0), medium(1), hard(2)
+} game_state;
+
 // bitmap stuff
 typedef struct win32_offscreen_buffer {
 	BITMAPINFO info;
@@ -48,10 +54,8 @@ typedef struct win32_rect {
 
 //	-------	GLOBAL VARIABLES
 global_variable int running;
+global_variable game_state GameState;
 global_variable win32_offscreen_buffer GlobalBackBuffer;
-global_variable POINT MousePos;
-
-
 
 //	-------	RENDERING
 
@@ -81,18 +85,66 @@ internal void RenderGradient(win32_offscreen_buffer *buffer, int xOffset, int yO
 				*pixel = (uint8)(y + yOffset);
 				++pixel;
 				
-				// offset
+				// offset (for memory allignment)
 				*pixel = 0;
 				++pixel;
-		};
+			};
 		
 		row += offset;
 	};
 }
 
+internal void RenderPointer(win32_offscreen_buffer *buffer, POINT *MousePos) {
+	int width = buffer->width;
+	int height = buffer->height;
+	
+	// since the buffer's Y coordinates are inverted compared the mousepos, it's better to invert it.
+	int invertedY = height-MousePos->y;
+	
+	int offset = width*buffer->bytesPerPixel;
+	uint8 *row = (uint8 *)buffer->memory;
+	
+	row += offset*invertedY;
+	row += buffer->bytesPerPixel*MousePos->x;
+	
+	uint8 *pixel = (uint8 *)row;
+	
+	// blue
+	*pixel = 255;
+	++pixel;
+				
+	// green
+	*pixel = 255;
+	++pixel;
+				
+	// red
+	*pixel = 255;
+	++pixel;
+				
+	// offset (for memory alignment)
+	*pixel = 0;
+	++pixel;
+}
 
 
-//	-------	INPUT HANDLING
+// this function updates send the pixels to windows to draw the buffer
+internal void Win32UpdateWindow(HDC DeviceContext, 
+								RECT *WindowRect, 
+								win32_offscreen_buffer *buffer, 
+								int width, 
+								int height) 
+{
+									
+	int windowWidth = WindowRect->right - WindowRect->left;
+	int windowHeight = WindowRect->bottom - WindowRect->top;
+
+	StretchDIBits(DeviceContext, 
+	0, 0, buffer->width, buffer->height, 
+	0, 0, windowWidth, windowHeight, 
+	buffer->memory,
+	&buffer->info,
+  DIB_RGB_COLORS, SRCCOPY);
+}
 
 internal void ListenToDevices(RAWINPUTDEVICE RID[2]) {
         
@@ -105,71 +157,6 @@ internal void ListenToDevices(RAWINPUTDEVICE RID[2]) {
 	RID[1].usUsage = 0x06;              // HID_USAGE_GENERIC_KEYBOARD
 	RID[1].dwFlags = RIDEV_NOLEGACY;    // adds keyboard and also ignores legacy keyboard messages
 	RID[1].hwndTarget = 0;
-}
-
-internal void FilterInputs(LPARAM lParam) {
-	HRESULT hResult;
-	uint dwSize;
-
-	GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
-    uint8 lpb[256];
-	
-    if (lpb == NULL) 
-    {
-		OutputDebugStringA("lpb is null\n");
-		return;
-    } 
-
-    if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, lpb, &dwSize, sizeof(RAWINPUTHEADER)) != dwSize)
-         OutputDebugString (TEXT("GetRawInputData does not return correct size !\n")); 
-
-    RAWINPUT* raw = (RAWINPUT*)lpb;
-
-    if (raw->header.dwType == RIM_TYPEKEYBOARD) 
-    {
-		/*
-        hResult = StringCchPrintf(szTempOutput, STRSAFE_MAX_CCH,
-            TEXT(" Kbd: make=%04x Flags:%04x Reserved:%04x ExtraInformation:%08x, msg=%04x VK=%04x \n"), 
-            raw->data.keyboard.MakeCode, 
-            raw->data.keyboard.Flags, 
-            raw->data.keyboard.Reserved, 
-            raw->data.keyboard.ExtraInformation, 
-            raw->data.keyboard.Message, 
-            raw->data.keyboard.VKey);
-        if (FAILED(hResult))
-        {
-        // TODO: write error handler
-        }
-		*/
-        OutputDebugStringA("keyboard\n");
-    }
-	
-	
-	// ↓ NOTE(ru): this code is deprecated for now, using get GetCursorPos, keeping the code in case extra infos would be needed
-	
-	/*
-    else if (raw->header.dwType == RIM_TYPEMOUSE) 
-    {
-		
-        hResult = StringCchPrintf(szTempOutput, STRSAFE_MAX_CCH,
-            TEXT("Mouse: usFlags=%04x ulButtons=%04x usButtonFlags=%04x usButtonData=%04x ulRawButtons=%04x lLastX=%04x lLastY=%04x ulExtraInformation=%04x\r\n"), 
-            raw->data.mouse.usFlags, 
-            raw->data.mouse.ulButtons, 
-            raw->data.mouse.usButtonFlags, 
-            raw->data.mouse.usButtonData, 
-            raw->data.mouse.ulRawButtons, 
-            raw->data.mouse.lLastX, 
-            raw->data.mouse.lLastY, 
-            raw->data.mouse.ulExtraInformation);
-
-        if (FAILED(hResult))
-        {
-        // TODO: write error handler
-        }
-		
-        OutputDebugStringA("mouse\n");
-    } 	
-	*/
 }
 
 
@@ -208,26 +195,29 @@ internal void Win32ResizeDIBDSection(win32_offscreen_buffer *buffer, int width, 
 	buffer->memory = VirtualAlloc(0, bitMapMemorySize, MEM_COMMIT, PAGE_READWRITE);
 };
 
-internal void Win32UpdateWindow(HDC DeviceContext, 
-								RECT *WindowRect, 
-								win32_offscreen_buffer *buffer, 
-								int width, 
-								int height) 
-{
-									
-	int windowWidth = WindowRect->right - WindowRect->left;
-	int windowHeight = WindowRect->bottom - WindowRect->top;
+//	------- INPUT PROCESSING 
 
-	StretchDIBits(DeviceContext, 
-	0, 0, buffer->width, buffer->height, 
-	0, 0, windowWidth, windowHeight, 
-	buffer->memory,
-	&buffer->info,
-  DIB_RGB_COLORS, SRCCOPY);
+internal void HandleFunctionKeystrokes(WPARAM wParam) {
+
+	switch (wParam) 
+	{ 
+		case VK_ESCAPE: {
+			OutputDebugStringA("Game paused?\n");
+			// flips between 0 and 1
+			GameState.pause = 1 - GameState.pause;
+			break;
+		}
+
+		default: {
+			// Process other non-character keystrokes. 
+			break; 
+		}
+	}
 }
 
 
-// ---	MESSAGES PROCESSING
+// ---	MESSAGES PROCESSING 			/!\ THIS RUNS ON ANOTHER THREAD THAN THE GAME LOOP. 
+
 LRESULT CALLBACK Win32MainWindowCallback(
 	HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 ) {
@@ -283,26 +273,10 @@ LRESULT CALLBACK Win32MainWindowCallback(
 		};
 		
 		//	INPUT PROCESSING
-		case WM_INPUT: {
-			// FilterInputs(lParam);
+		case WM_KEYDOWN: {
+			HandleFunctionKeystrokes(wParam);
 			break;
-		};
-		
-		/*
-		
-		// TODO(ru): very later on, pause the game when cursor is out of window
-		// (mouse should be kept inside window anyway but alt tab and windows key will not be enforced.)
-		case WM_MOUSELEAVE:
-		{
-			// TODO(ru): use this -> https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-trackmouseevent
-			// this too -> https://stackoverflow.com/questions/68021291/how-to-detect-mouse-cursor-is-outside-a-windows
-			// NOTE(ru): ^ this may or may not be useful? It's possible to know if the mouse is inside the app just by 
-			// doing some calculation with both the rect and mouses absolute coordinates to make relative ones
-			// ^ (might possibly be faster than calling an event and stuff)
-			
 		}
-		
-		*/
 		
 		default: {
 			Result = DefWindowProcA(hWnd, uMsg, wParam, lParam);
@@ -357,6 +331,13 @@ int CALLBACK WinMain(
 			int xOffset = 0;
 			int yOffset = 0;
 			
+			// FIRST RUN (GAME STATE)
+			{
+				GameState.level = 0;
+				GameState. pause = 0;
+				GameState.difficulty = 0;
+			}
+			
 			
 			// FIRST RUN (RENDERING)
 			{
@@ -364,18 +345,6 @@ int CALLBACK WinMain(
 				win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
 				Win32ResizeDIBDSection(&GlobalBackBuffer, clientRect.width, clientRect.height);
 			}
-
-			
-			// FIRST RUN (REGISTER DEVICES
-			{
-				RAWINPUTDEVICE RID[2];
-				// ListenToDevices(RID);
-				
-				// if (RegisterRawInputDevices(RID, 2, sizeof(RID[0])) == FALSE){
-				// 	OutputDebugStringA("registration failed. Call GetLastError for the cause of the error\n");
-				// }
-			}
-			
 			
 			
 			// GAME LOOP :
@@ -384,6 +353,8 @@ int CALLBACK WinMain(
 				// leaving that here for now, it's basically used everywhere anyways
 				HDC DC = GetDC(WindowHandle);
 				win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
+				int isInWindow = 0;
+				POINT MousePos;
 				
 				// MESSAGE PROCESSING
 				{
@@ -410,21 +381,27 @@ int CALLBACK WinMain(
 					ScreenToClient(WindowHandle, &MousePos);
 					char buffer[256];
 					_snprintf_s(buffer, sizeof(buffer), sizeof(buffer), "Pos: %d,%d\n", MousePos.x, MousePos.y);
-					OutputDebugStringA(buffer);
+					 OutputDebugStringA(buffer);
 					if((MousePos.x > 0 && MousePos.y > 0) && (MousePos.x < clientRect.width && MousePos.y < clientRect.height) ) {
-						OutputDebugStringA("inside");
+						isInWindow = 1;
+						// OutputDebugStringA("inside");
 					} else {
-						OutputDebugStringA("outside");
+						isInWindow = 0;
+						// OutputDebugStringA("outside");
 					}
 				}
 				
 				// RENDERING 
 				{
-					RenderGradient(&GlobalBackBuffer, xOffset, yOffset);
+					if(!GameState.pause) {
+						RenderGradient(&GlobalBackBuffer, xOffset, yOffset);
+						++xOffset;
+					}
+					if(isInWindow){
+						RenderPointer(&GlobalBackBuffer, &MousePos);
+					}
 					Win32UpdateWindow(DC, &clientRect.rectangle, &GlobalBackBuffer, clientRect.width, clientRect.height);
 					ReleaseDC(WindowHandle, DC);
-					
-					++xOffset;
 				}
 
 				// GAME SETTINGS AND LIMITATIONS
