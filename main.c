@@ -24,6 +24,7 @@ typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
 
+// playable area : 255 * 5 = 1275px, to scale.
 
 
 // ------- CUSTOM STRUCTS AND TYPEDEFS
@@ -33,6 +34,9 @@ typedef struct game_state {
 	int level;	// level of the game, 0 is the main menu
 	int difficulty; // difficulty : easy(0), medium(1), hard(2)
 } game_state;
+
+
+// --- RENDERING STRUCTS
 
 // bitmap stuff
 typedef struct win32_offscreen_buffer {
@@ -50,6 +54,14 @@ typedef struct win32_rect {
 	int height;
 } win32_rect;
 
+// texture
+typedef struct texture {
+	BITMAPINFO info;
+	void *memory;
+	int width;
+	int height;
+	int bytesPerPixel;
+}
 
 
 //	-------	GLOBAL VARIABLES
@@ -124,6 +136,10 @@ internal void RenderPointer(win32_offscreen_buffer *buffer, POINT *MousePos) {
 	// offset (for memory alignment)
 	*pixel = 0;
 	++pixel;
+}
+
+internal void scaleTexture(win32_offscreen_buffer *buffer, ) {
+	
 }
 
 

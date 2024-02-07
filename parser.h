@@ -16,3 +16,9 @@ typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
 
+typedef struct bitmap {
+	void *bmp_file_header;
+	int 
+} bitmap;
+
+internal 
