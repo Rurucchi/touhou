@@ -27,13 +27,39 @@ typedef int64_t int64;
 // playable area : 255 * 5 = 1275px, to scale.
 
 
-// ------- CUSTOM STRUCTS AND TYPEDEFS
+// --------------------------------------- CUSTOM STRUCTS AND TYPEDEFS
 
+
+// -------------- GAME LOGIC
+
+// game state 
 typedef struct game_state {
 	int pause;	// if the game is paused (menu has the game paused by default?) 0 or 1.
 	int level;	// level of the game, 0 is the main menu
 	int difficulty; // difficulty : easy(0), medium(1), hard(2)
 } game_state;
+
+// game size
+typedef struct virtual_game_size {
+	int horizontal;
+	int vertical;
+} virtual_game_size;
+
+
+// -------------- ENTIIES
+typedef struct entity {
+	uint zIndex;
+	float top;
+	float left;
+	float width;
+	float height;
+	int visibility;
+} entity;
+
+typedef struct player {
+	entity entity;
+	int health;
+} player;
 
 
 // --- RENDERING STRUCTS
@@ -61,13 +87,14 @@ typedef struct texture {
 	int width;
 	int height;
 	int bytesPerPixel;
-}
+} texture;
 
 
 //	-------	GLOBAL VARIABLES
 global_variable int running;
 global_variable game_state GameState;
 global_variable win32_offscreen_buffer GlobalBackBuffer;
+global_variable virtual_game_size VirtualGameSize;
 
 //	-------	RENDERING
 
@@ -106,7 +133,7 @@ internal void RenderGradient(win32_offscreen_buffer *buffer, int xOffset, int yO
 	};
 }
 
-internal void RenderPointer(win32_offscreen_buffer *buffer, POINT *MousePos) {
+internal void RenderPlayer(win32_offscreen_buffer *buffer, POINT *MousePos, player *Player) {
 	int width = buffer->width;
 	int height = buffer->height;
 	
@@ -138,7 +165,7 @@ internal void RenderPointer(win32_offscreen_buffer *buffer, POINT *MousePos) {
 	++pixel;
 }
 
-internal void scaleTexture(win32_offscreen_buffer *buffer, ) {
+internal void scaleTexture(win32_offscreen_buffer *buffer) {
 	
 }
 
@@ -352,6 +379,9 @@ int CALLBACK WinMain(
 				GameState.level = 0;
 				GameState. pause = 0;
 				GameState.difficulty = 0;
+				
+				VirtualGameSize.horizontal = 1600;
+				VirtualGameSize.vertical = 900;
 			}
 			
 			
@@ -361,6 +391,13 @@ int CALLBACK WinMain(
 				win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
 				Win32ResizeDIBDSection(&GlobalBackBuffer, clientRect.width, clientRect.height);
 			}
+			
+			
+			// todo(ru): cleanup this later
+			// FIRST RUN (ENTITIES)
+			player Player;
+			Player.health = 100;
+			
 			
 			
 			// GAME LOOP :
@@ -414,7 +451,7 @@ int CALLBACK WinMain(
 						++xOffset;
 					}
 					if(isInWindow){
-						RenderPointer(&GlobalBackBuffer, &MousePos);
+						RenderPlayer(&GlobalBackBuffer, &MousePos, &Player);
 					}
 					Win32UpdateWindow(DC, &clientRect.rectangle, &GlobalBackBuffer, clientRect.width, clientRect.height);
 					ReleaseDC(WindowHandle, DC);
