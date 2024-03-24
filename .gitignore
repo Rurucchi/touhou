@@ -1,7 +1,6 @@
 main.exe
-main.obj
 main.ilk
+main.obj
 main.pdb
 vc140.pdb
-.vs
 debug.rdbg

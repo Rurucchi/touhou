@@ -4,6 +4,14 @@
 #include <stdint.h>
 #include <synchapi.h>
 #include <stdio.h>
+#include <math.h>
+
+// custom libraries
+#include "./types.h"
+#include "./entities.h"
+#include "./render.h"
+#include "./platform.h"
+#include "./parser.h"
 
 #define UNICODE
 #define _UNICODE
@@ -12,83 +20,9 @@
 #define local_persist static
 #define global_variable static
 
-typedef unsigned int uint;
-
-typedef uint8_t uint8;
-typedef uint16_t uint16;
-typedef uint32_t uint32;
-typedef uint64_t uint64;
-
-typedef int8_t int8;
-typedef int16_t int16;
-typedef int32_t int32;
-typedef int64_t int64;
+#define Clamp(value, low, high) ((value) < (high)) ? (((value) > (low)) ? (value) : (low)) : (high)
 
 // playable area : 255 * 5 = 1275px, to scale.
-
-
-// --------------------------------------- CUSTOM STRUCTS AND TYPEDEFS
-
-
-// -------------- GAME LOGIC
-
-// game state 
-typedef struct game_state {
-	int pause;	// if the game is paused (menu has the game paused by default?) 0 or 1.
-	int level;	// level of the game, 0 is the main menu
-	int difficulty; // difficulty : easy(0), medium(1), hard(2)
-} game_state;
-
-// game size
-typedef struct virtual_game_size {
-	int horizontal;
-	int vertical;
-} virtual_game_size;
-
-
-// -------------- ENTIIES
-typedef struct entity {
-	uint zIndex;
-	float top;
-	float left;
-	float width;
-	float height;
-	int visibility;
-} entity;
-
-typedef struct player {
-	entity entity;
-	int health;
-} player;
-
-
-// --- RENDERING STRUCTS
-
-// bitmap stuff
-typedef struct win32_offscreen_buffer {
-	BITMAPINFO info;
-	void *memory;
-	int width;
-	int height;
-	int bytesPerPixel;
-} win32_offscreen_buffer;
-
-// rectangle
-typedef struct win32_rect {
-	RECT rectangle;
-	int width;
-	int height;
-} win32_rect;
-
-// texture
-typedef struct texture {
-	BITMAPINFO info;
-	void *memory;
-	int width;
-	int height;
-	int bytesPerPixel;
-} texture;
-
 
 //	-------	GLOBAL VARIABLES
 global_variable int running;
@@ -96,79 +30,17 @@ global_variable game_state GameState;
 global_variable win32_offscreen_buffer GlobalBackBuffer;
 global_variable virtual_game_size VirtualGameSize;
 
-//	-------	RENDERING
+//  ------------------------------------------------------- UPDATE PLAYER
 
-internal void RenderGradient(win32_offscreen_buffer *buffer, int xOffset, int yOffset){
-	int width = buffer->width;
-	int height = buffer->height;
-	
-	int offset = width*buffer->bytesPerPixel;
-	uint8 *row = (uint8 *)buffer->memory;
-	
-	// coloring each pixel of the rectangle
-	for(int y = 0; y < buffer->height; ++y){
-		
-			uint8 *pixel = (uint8*)row;
-			for(int x = 0; x < buffer->width; ++x){
-				// /!\ LITTLE ENDIAN ARCH.! MEMORY INDEXES ARE INVERTED!
-				
-				// blue
-				*pixel = (uint8)(x + xOffset);
-				++pixel;
-				
-				// green
-				*pixel = 0;
-				++pixel;
-				
-				// red
-				*pixel = (uint8)(y + yOffset);
-				++pixel;
-				
-				// offset (for memory allignment)
-				*pixel = 0;
-				++pixel;
-			};
-		
-		row += offset;
-	};
-}
-
-internal void RenderPlayer(win32_offscreen_buffer *buffer, POINT *MousePos, player *Player) {
-	int width = buffer->width;
-	int height = buffer->height;
-	
+internal void UpdatePlayerPos(POINT *MousePos, player *Player, win32_offscreen_buffer *buffer) {	
 	// since the buffer's Y coordinates are inverted compared the mousepos, it's better to invert it.
-	int invertedY = height-MousePos->y;
+	Player->entity.center.y = buffer->MousePos.y;
+	Player->entity.center.x = buffer->MousePos.x;
 	
-	int offset = width*buffer->bytesPerPixel;
-	uint8 *row = (uint8 *)buffer->memory;
-	
-	row += offset*invertedY;
-	row += buffer->bytesPerPixel*MousePos->x;
-	
-	uint8 *pixel = (uint8 *)row;
-	
-	// blue
-	*pixel = 255;
-	++pixel;
-				
-	// green
-	*pixel = 255;
-	++pixel;
-				
-	// red
-	*pixel = 255;
-	++pixel;
-				
-	// offset (for memory alignment)
-	*pixel = 0;
-	++pixel;
-}
-
-internal void scaleTexture(win32_offscreen_buffer *buffer) {
+	Player->entity.top = Clamp(Player->entity.center.y + Player->entity.height/2, Player->entity.height, VirtualGameSize.vertical);
+	Player->entity.left = Clamp(Player->entity.center.x + Player->entity.width/2, Player->entity.width, VirtualGameSize.horizontal);
 	
 }
-
 
 // this function updates send the pixels to windows to draw the buffer
 internal void Win32UpdateWindow(HDC DeviceContext, 
@@ -301,18 +173,18 @@ LRESULT CALLBACK Win32MainWindowCallback(
 		//	ON RESIZE : RENDER AGAIN
 		case WM_PAINT : {
 			
-		PAINTSTRUCT Paint;
-		HDC DC = BeginPaint(hWnd, &Paint);
-		
-		int X = Paint.rcPaint.left;
-		int Y = Paint.rcPaint.top;
-		int width = Paint.rcPaint.right - Paint.rcPaint.left;
-		int height = Paint.rcPaint.bottom - Paint.rcPaint.top;
-		
-		RECT ClientRect;
-		GetClientRect(hWnd, &ClientRect);
-		Win32UpdateWindow(DC, &ClientRect, &GlobalBackBuffer, width, height);
-		break;
+			PAINTSTRUCT Paint;
+			HDC DC = BeginPaint(hWnd, &Paint);
+			
+			int X = Paint.rcPaint.left;
+			int Y = Paint.rcPaint.top;
+			int width = Paint.rcPaint.right - Paint.rcPaint.left;
+			int height = Paint.rcPaint.bottom - Paint.rcPaint.top;
+			
+			RECT ClientRect;
+			GetClientRect(hWnd, &ClientRect);
+			Win32UpdateWindow(DC, &ClientRect, &GlobalBackBuffer, width, height);
+			break;
 		};
 		
 		//	INPUT PROCESSING
@@ -356,8 +228,8 @@ int CALLBACK WinMain(
 			WS_OVERLAPPEDWINDOW | WS_VISIBLE,
 			CW_USEDEFAULT,
 			CW_USEDEFAULT,
-			600,
-			450,
+			1600,
+			900,
 			0,
 			0,
 			hInstance,
@@ -373,6 +245,15 @@ int CALLBACK WinMain(
 			// Rendering offsets
 			int xOffset = 0;
 			int yOffset = 0;
+			
+			// todo(ru): cleanup this later
+			// FIRST RUN (ENTITIES)
+			player Player = {0};
+			Player.entity.sprite.width = 0;
+			Player.health = 100;
+			Player.entity.width = 30;
+			Player.entity.height = 50;
+			
 			
 			// FIRST RUN (GAME STATE)
 			{
@@ -390,16 +271,17 @@ int CALLBACK WinMain(
 				GlobalBackBuffer.bytesPerPixel = 4;
 				win32_rect clientRect = Win32GetDrawableRect(WindowHandle);
 				Win32ResizeDIBDSection(&GlobalBackBuffer, clientRect.width, clientRect.height);
+				
+				// PLAYER TEXTURE 
+				char playerSpriteLocation[] = "player.bmp";
+				completeFile playerFile;
+				ReadFullFile(playerSpriteLocation, &playerFile);
+				file_bitmap playerSprite = BMPToTexture(&playerFile, &Player.entity.sprite);
 			}
 			
 			
-			// todo(ru): cleanup this later
-			// FIRST RUN (ENTITIES)
-			player Player;
-			Player.health = 100;
-			
-			
-			
+
+	
 			// GAME LOOP :
 			while (running) {
 				
@@ -426,22 +308,35 @@ int CALLBACK WinMain(
 					}
 				}
 				
+				// WINDOW RESIZE
+				Win32ResizeDIBDSection(&GlobalBackBuffer, clientRect.width, clientRect.height);
 				
 				// INPUTS
 				{
 					GetCursorPos(&MousePos);
 					// TODO(ru): fix this
 					ScreenToClient(WindowHandle, &MousePos);
+					
+					GlobalBackBuffer.MousePos.y = ((GlobalBackBuffer.height - MousePos.y) * VirtualGameSize.vertical) / GlobalBackBuffer.height;
+					GlobalBackBuffer.MousePos.x = (MousePos.x * VirtualGameSize.horizontal) / GlobalBackBuffer.width ;
+					
+					// debug code
+					
+					/*
 					char buffer[256];
 					_snprintf_s(buffer, sizeof(buffer), sizeof(buffer), "Pos: %d,%d\n", MousePos.x, MousePos.y);
-					 OutputDebugStringA(buffer);
+					OutputDebugStringA(buffer);
+					*/
+					
 					if((MousePos.x > 0 && MousePos.y > 0) && (MousePos.x < clientRect.width && MousePos.y < clientRect.height) ) {
 						isInWindow = 1;
-						// OutputDebugStringA("inside");
+						
 					} else {
 						isInWindow = 0;
 						// OutputDebugStringA("outside");
 					}
+					UpdatePlayerPos(&MousePos, &Player, &GlobalBackBuffer);
+					
 				}
 				
 				// RENDERING 
@@ -451,8 +346,10 @@ int CALLBACK WinMain(
 						++xOffset;
 					}
 					if(isInWindow){
-						RenderPlayer(&GlobalBackBuffer, &MousePos, &Player);
+						
 					}
+					RenderEntity(&GlobalBackBuffer, &Player.entity, &VirtualGameSize);
+					
 					Win32UpdateWindow(DC, &clientRect.rectangle, &GlobalBackBuffer, clientRect.width, clientRect.height);
 					ReleaseDC(WindowHandle, DC);
 				}
@@ -461,7 +358,7 @@ int CALLBACK WinMain(
 				{
 					// NOTE(wuwi) : limit FPS and game ticks
 					// (144 for now, might want to increase to 165 or 240, depends of performance.)
-					Sleep(7);
+					// Sleep(7);
 				}
 			}
 		}
