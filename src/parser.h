@@ -15,9 +15,19 @@
 
 internal file_bitmap parseBMP(completeFile *file) {
 	file_bitmap bitmap = {0};
+	file_bitmap_header *bitmapHeader;
+	file_bitmap_info_header *bitmapInfoHeader;
+	
+	// parsing
 	uint8 *memory = (uint8*)file->memory;
-	bitmap.bitmapHeader = (file_bitmap_header*)memory;
-	bitmap.bitmapInfoHeader = (file_bitmap_info_header*)memory;
+	bitmapHeader = (file_bitmap_header*)memory;
+	uint16 size = sizeof(bitmapHeader);
+	memory += 14;
+	bitmapInfoHeader = (file_bitmap_info_header*)memory;
+	
+	bitmap.bitmapHeader = bitmapHeader;
+	bitmap.bitmapInfoHeader = bitmapInfoHeader;
+	
 	return bitmap;	
 }
 

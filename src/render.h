@@ -17,13 +17,29 @@
 
 // for texture 
 internal void AbsoluteToRelative(POINT *absoluteCoords, POINT *relativeCoords, int maxX, int maxY){
-	relativeCoords->x = absoluteCoords->x / maxX;
-	relativeCoords->y = absoluteCoords->y / maxY;
+	if(absoluteCoords->x != 0) {
+		relativeCoords->x = absoluteCoords->x / maxX;
+	} else {
+		relativeCoords->x = 0;
+	}
+	if(absoluteCoords->y != 0) {
+		relativeCoords->y = absoluteCoords->y / maxY;
+	} else {
+		relativeCoords->y = 0;
+	}
 }
 
 internal void RelativeToAbsolute(POINT *relativeCoords, POINT *absoluteCoords, int maxX, int maxY){
-	absoluteCoords->x = relativeCoords->x * maxX;
-	absoluteCoords->y = relativeCoords->y * maxY;
+	if(relativeCoords->x != 0) {
+		absoluteCoords->x = relativeCoords->x * maxX;
+	} else {
+		absoluteCoords->x = relativeCoords->x * maxX;
+	}
+	if(relativeCoords->y != 0) {
+		absoluteCoords->y = relativeCoords->y * maxY;
+	} else {
+		absoluteCoords->x = relativeCoords->x * maxX;
+	}
 }
 
 internal void RenderGradient(win32_offscreen_buffer *buffer, int xOffset, int yOffset){
@@ -80,6 +96,7 @@ internal void RenderEntity(win32_offscreen_buffer *buffer, entity *Entity, virtu
 	// texture coords (parsing)
 	POINT relativeCoords = {0};
 	POINT absoluteCoords = {0};
+
 	
 	int row = width*buffer->bytesPerPixel;
 	uint8 *area = (uint8 *)buffer->memory;
@@ -104,8 +121,9 @@ internal void RenderEntity(win32_offscreen_buffer *buffer, entity *Entity, virtu
 			// accessing texture memory
 			
 			uint32 *textureCursor = Entity->sprite.memory ;
+			uint8 bpp = Entity->sprite.bytesPerPixel ;
 			
-			uint8 spritePixel = *(uint32*)textureCursor + (32 * Entity->sprite.width * absoluteCoords.y) + absoluteCoords.x;
+			uint32 spritePixel = *(uint32*)textureCursor + (bpp * Entity->sprite.width * absoluteCoords.y) + absoluteCoords.x;
 			
 			
 			// writing pixel

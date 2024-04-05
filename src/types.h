@@ -52,6 +52,9 @@ typedef struct completeFile {
 	void *memory;
 } completeFile;
 
+
+// disable compiler memory alligment
+#pragma pack(push, 1)
 typedef struct file_bitmap_header
 {
     // header: 14 bytes
@@ -75,8 +78,9 @@ typedef struct file_bitmap_info_header
     uint32 numColors; // number of colors in the palette
     uint32 numImpColors; // number of important colors used
 } file_bitmap_info_header;
+#pragma pack(pop)
 
-typedef struct file_bitmap+- {
+typedef struct file_bitmap {
 	file_bitmap_header *bitmapHeader;
 	file_bitmap_info_header *bitmapInfoHeader;
 } file_bitmap;

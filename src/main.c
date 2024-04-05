@@ -276,7 +276,7 @@ int CALLBACK WinMain(
 				char playerSpriteLocation[] = "player.bmp";
 				completeFile playerFile;
 				ReadFullFile(playerSpriteLocation, &playerFile);
-				file_bitmap playerSprite = BMPToTexture(&playerFile, &Player.entity.sprite);
+				BMPToTexture(&playerFile, &Player.entity.sprite);
 			}
 			
 			
