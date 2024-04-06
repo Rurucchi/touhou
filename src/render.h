@@ -123,7 +123,7 @@ internal void RenderEntity(win32_offscreen_buffer *buffer, entity *Entity, virtu
 			uint32 *textureCursor = Entity->sprite.memory ;
 			uint8 bpp = Entity->sprite.bytesPerPixel ;
 			
-			uint32 spritePixel = *(uint32*)textureCursor + (bpp * Entity->sprite.width * absoluteCoords.y) + absoluteCoords.x;
+			uint32 spritePixel = *(uint32*)textureCursor + bpp * ((Entity->sprite.width * absoluteCoords.y) + absoluteCoords.x);
 			
 			
 			// writing pixel
@@ -133,12 +133,12 @@ internal void RenderEntity(win32_offscreen_buffer *buffer, entity *Entity, virtu
 			// blue
 			*pixelCursor = spritePixel;
 			++pixelCursor;
-			spritePixel += 8;
+			spritePixel += bpp;
 				
 			// green
 			*pixelCursor = spritePixel;
 			++pixelCursor;
-			spritePixel += 8;
+			spritePixel += bpp;
 				
 			// red
 			*pixelCursor = spritePixel;
